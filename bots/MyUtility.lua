@@ -348,7 +348,7 @@ function U.moveToT3Tower(bot)
 	distance = GetUnitToLocationDistance(bot, GetLocationAlongLane(2, 0.28))
 	if distance > 200 then
 		print("Moving to T3 tower")
-		bot:Action_MoveToLocation(GetLocationAlongLane(2, 0.29))
+		bot:Action_AttackMove(GetLocationAlongLane(2, 0.29))
 	end
 end
 
@@ -357,11 +357,11 @@ function U.moveToT1Tower(bot)
 		return
 	end
 	print("Moving to T1 tower")
-	bot:Action_MoveToLocation(Vector(473.224609, 389.945801))
+	bot:Action_AttackMove(Vector(473.224609, 389.945801))
 end
 
 function U.blockCreepWave(bot, nearbyCreeps)
-	print("Blocking creep wave", bot:GetLocation())
+	print("Blocking creep wave")
 	local farthestCreepAlongLane
 	local lowestDistance = 999999
 	local botLocation = bot:GetLocation()
@@ -377,21 +377,136 @@ function U.blockCreepWave(bot, nearbyCreeps)
 	-- else block creeps
 	if #nearbyCreeps > 0 then
 		for i=1,#nearbyCreeps,1 do
-			local creepDistance = GetUnitToLocationDistance(nearbyCreeps[i], Vector(107.808815, -455.621277))
-			local heroDistance = GetUnitToLocationDistance(bot, Vector(107.808815, -455.621277))
+			local creepDistance = GetUnitToLocationDistance(nearbyCreeps[i], Vector(-3293.869141, -3455.594727))
+			local heroDistance = GetUnitToLocationDistance(bot, Vector(-3293.869141, -3455.594727))
 			if creepDistance < lowestDistance and creepDistance > heroDistance then
 				lowestDistance = creepDistance
 				farthestCreepAlongLane = nearbyCreeps[i]
 			end
 		end
 		
-		if farthestCreepAlongLane == nil and botLocation.x > 500 and botLocation.y > 300  then
-			return 
-		end
-		
-		bot:Action_MoveToLocation(Vector(farthestCreepAlongLane:GetLocation().x-100, farthestCreepAlongLane:GetLocation().y-100))
+		bot:Action_AttackMove(Vector(farthestCreepAlongLane:GetLocation().x-100, farthestCreepAlongLane:GetLocation().y-100))
 		return true
 	end
+	
+	return true
+end
+
+function U.GetWeakestUnit(units)
+	local lowestHP = 10000;
+	local lowestUnit = nil;
+	for _,unit in pairs(units)
+	do
+		local hp = unit:GetHealth();
+		if hp < lowestHP then
+			lowestHP = hp;
+			lowestUnit = unit;	
+		end
+	end
+	return lowestUnit;
+end
+
+function GetItemWardSlot(bot)
+	return bot:FindItemSlot("item_ward_observer")
+end
+
+function U.GetItemWard(bot)
+	return bot:GetItemInSlot(GetItemWardSlot(bot))
+end
+
+function U.IsUnitNearLoc( nUnit, vLoc, nRange, nDely )
+
+	if GetUnitToLocationDistance( nUnit, vLoc ) > 250
+	then
+		return false
+	end
+
+	local nMoveSta = nUnit:GetMovementDirectionStability()
+	if nMoveSta < 0.98 then nRange = nRange - 14 end
+	if nMoveSta < 0.91 then nRange = nRange - 26 end
+	if nMoveSta < 0.81 then nRange = nRange - 30 end
+
+	local fLoc = U.GetCorrectLoc( nUnit, nDely )
+	if U.GetLocationToLocationDistance( fLoc, vLoc ) < nRange
+	then
+		return true
+	end
+
+	return false
+
+end
+
+function U.GetCorrectLoc( npcTarget, fDelay )
+
+	local nStability = npcTarget:GetMovementDirectionStability()
+
+	local vFirst = npcTarget:GetLocation()
+	local vFuture = npcTarget:GetExtrapolatedLocation( fDelay )
+	local vMidFutrue = ( vFirst + vFuture ) * 0.5
+	local vLowFutrue = ( vFirst + vMidFutrue ) * 0.5
+	local vHighFutrue = ( vFuture + vMidFutrue ) * 0.5
+
+
+	if nStability < 0.5
+	then
+		return vLowFutrue
+	elseif nStability < 0.7
+	then
+		return vMidFutrue
+	elseif nStability < 0.9
+	then
+		return vHighFutrue
+	end
+
+	return vFuture
+end
+
+
+function U.IsUnitCanBeKill( nUnit, nDamage, nBonus, nCastPoint )
+
+	local nDamageType = DAMAGE_TYPE_MAGICAL
+
+	local nStack = 0
+	local nUnitModifier = nUnit:NumModifiers()
+
+	if nUnitModifier >= 1
+	then
+		for i = 0, nUnitModifier
+		do
+			if nUnit:GetModifierName( i ) == "modifier_nevermore_shadowraze_debuff"
+			then
+				nStack = nUnit:GetModifierStackCount( i )
+				break
+			end
+		end
+	end
+
+	local nRealDamage = nDamage + nStack * nBonus
+
+
+	return J.WillKillTarget( nUnit, nRealDamage, nDamageType, nCastPoint )
+
+end
+
+function U.GetFaceTowardDistanceLocation( bot, nDistance )
+
+	local npcBotLocation = bot:GetLocation()
+	local tempRadians = bot:GetFacing() * math.pi / 180
+	local tempVector = Vector( math.cos( tempRadians ), math.sin( tempRadians ) )
+
+	return npcBotLocation + nDistance * tempVector
+
+end
+
+function U.GetLocationToLocationDistance( fLoc, sLoc )
+
+	local x1 = fLoc.x
+	local x2 = sLoc.x
+	local y1 = fLoc.y
+	local y2 = sLoc.y
+
+	return math.sqrt( math.pow( ( y2-y1 ), 2 ) + math.pow( ( x2-x1 ), 2 ) )
+
 end
 
 return U;

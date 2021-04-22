@@ -1,3 +1,8 @@
+local botName = {"Sharingan"..".".."S-AI"..".".."V0.1", "Sharingan"..".".."S-AI"..".".."V0.1", "Sharingan"..".".."S-AI"..".".."V0.1", "Sharingan"..".".."S-AI"..".".."V0.1", "Sharingan"..".".."S-AI"..".".."V0.1"}
+
+function GetBotNames()
+	return botName;
+end
 
 function Think()
   if(GetTeam() == TEAM_RADIANT) then
