@@ -411,7 +411,12 @@ function GetItemWardSlot(bot)
 end
 
 function U.GetItemWard(bot)
-	return bot:GetItemInSlot(GetItemWardSlot(bot))
+	local itemWardSlot = GetItemWardSlot(bot)
+	if itemWardSlot > 8 then
+		return nil
+	else
+		return bot:GetItemInSlot(GetItemWardSlot(bot))
+	end
 end
 
 function U.IsUnitNearLoc( nUnit, vLoc, nRange, nDely )
@@ -507,6 +512,19 @@ function U.GetLocationToLocationDistance( fLoc, sLoc )
 
 	return math.sqrt( math.pow( ( y2-y1 ), 2 ) + math.pow( ( x2-x1 ), 2 ) )
 
+end
+
+function U.GetCreepType( creep )
+
+	local creepMaxHealth = creep:GetMaxHealth()
+
+	if (creepMaxHealth <= 900) then
+		return "meele"
+	elseif (creepMaxHealth <= 500) then
+		return "ranged"
+	else
+		return "siege"
+	end
 end
 
 return U;
