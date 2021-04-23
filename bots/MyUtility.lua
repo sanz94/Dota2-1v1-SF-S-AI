@@ -37,8 +37,7 @@ function U.InitiateAbilities(hUnit, tSlots)
 end
 
 function U.CantUseAbility(bot)
-	return bot:NumQueuedActions() > 0 
-		   or bot:IsAlive() == false or bot:IsInvulnerable() or bot:IsCastingAbility() or bot:IsUsingAbility() or bot:IsChanneling()  
+	return bot:IsAlive() == false or bot:IsInvulnerable() or bot:IsCastingAbility() or bot:IsUsingAbility() or bot:IsChanneling()  
 	       or bot:IsSilenced() or bot:IsStunned() or bot:IsHexed()  
 		   or bot:HasModifier("modifier_doom_bringer_doom")
 		   or bot:HasModifier('modifier_item_forcestaff_active')
@@ -421,7 +420,7 @@ end
 
 function U.IsUnitNearLoc( nUnit, vLoc, nRange, nDely )
 
-	if GetUnitToLocationDistance( nUnit, vLoc ) > 250
+	if GetUnitToLocationDistance( nUnit, vLoc ) >= 250
 	then
 		return false
 	end
@@ -436,6 +435,7 @@ function U.IsUnitNearLoc( nUnit, vLoc, nRange, nDely )
 	then
 		return true
 	end
+
 
 	return false
 

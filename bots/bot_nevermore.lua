@@ -135,6 +135,7 @@ local function ConsiderQ(botLevel, enemyHero, enemyCreeps, botManaLevel, botMana
 		--if #enemyHero ~= 0 and #enemyHeroInRazeRadius ~= 0 then
 			--return 1, enemyHero[1]:GetLocation()	
 		--end
+
 		if #enemyHero ~= 0 and mutils.IsUnitNearLoc( enemyHero[1], nCastLocation, razeRadius -30, nCastPoint ) then
 			return 1, enemyHero[1]:GetLocation()	
 		end
@@ -254,9 +255,6 @@ end
 ----------------------------------------------------------------------------------------------------
 local function heroPosition(nearbyCreeps, enemyCreeps)
 
-	--print("TEST2", bot:IsCastingAbility())
-	--print("TEST1", bot:GetCurrentActiveAbility())
-
 	if enemyCreeps ~= nil and #enemyCreeps > 0 then
 		bot:Action_MoveToLocation(Vector(enemyCreeps[1]:GetLocation().x+400, enemyCreeps[1]:GetLocation().y+400))
 	elseif nearbyCreeps ~= nil and #nearbyCreeps > 0 then
@@ -274,8 +272,9 @@ local function heroLastHit(enemyHero, nearbyCreeps, enemyCreeps, botAttackDamage
 	if enemyCreeps ~= nil and #enemyCreeps > 0 then
 		for i=1,#enemyCreeps,1 do
 			if enemyCreeps[i]:GetHealth() < botAttackDamage then
-				print("Last hitting enemy creep")
+				--print("Last hitting enemy creep")
 				bot:Action_AttackUnit(enemyCreeps[i], false)
+				return
 			end
 		end
 	end
@@ -283,8 +282,9 @@ local function heroLastHit(enemyHero, nearbyCreeps, enemyCreeps, botAttackDamage
 	if nearbyCreeps ~= nil and #nearbyCreeps > 0 then
 		for i=1,#nearbyCreeps,1 do
 			if nearbyCreeps[i]:GetHealth() < botAttackDamage then
-				print("Denying allied creep")
+				--print("Denying allied creep")
 				bot:Action_AttackUnit(nearbyCreeps[i], false)
+				return
 			end
 		end
 	end
@@ -301,7 +301,7 @@ local function heroLastHit(enemyHero, nearbyCreeps, enemyCreeps, botAttackDamage
 	else
 		if enemyCreepTarget ~= nil then
 
-			local timeForBotAttackToLand = GetUnitToUnitDistance(bot, enemyCreepTarget) / bot:GetAttackProjectileSpeed()
+			local timeForBotAttackToLand = (GetUnitToUnitDistance(bot, enemyCreepTarget) / bot:GetAttackProjectileSpeed()) + bot:GetAttackPoint() + (numberOfAlliedMeeleCreeps)
 			local projectiles = enemyCreepTarget:GetIncomingTrackingProjectiles()
 			for _,creep in pairs(nearbyCreeps) do
 				local creepDistance = GetUnitToUnitDistance(enemyCreepTarget,creep)
@@ -314,23 +314,28 @@ local function heroLastHit(enemyHero, nearbyCreeps, enemyCreeps, botAttackDamage
 				if (#projectiles ~= 0) then
 					for index, projectile in pairs(projectiles) do
 						totalProjectilesDamage = totalProjectilesDamage + projectile.caster:GetAttackDamage()
-						if (totalProjectilesDamage >= enemyCreepTarget:GetHealth() or ((enemyCreepTarget:GetHealth() - totalProjectilesDamage) < botAttackDamage)) then
+					
+						if ((enemyCreepTarget:GetHealth() - totalProjectilesDamage) <= botAttackDamage) then
 							projectileWhichKillsIndex = index
+							break
 						end
 					end
 				end
 				
+				
 				if projectileWhichKillsIndex ~= nil and projectileWhichKillsIndex ~= 0 then
-					local timeTakenForProjectileToLand = (mutils.GetLocationToLocationDistance(enemyCreepTarget:GetLocation(), projectiles[projectileWhichKillsIndex].location) / projectiles[projectileWhichKillsIndex].caster:GetAttackProjectileSpeed()) + bot:GetAttackPoint() + (numberOfAlliedMeeleCreeps * 1.5)
+					local timeTakenForProjectileToLand = (mutils.GetLocationToLocationDistance(enemyCreepTarget:GetLocation(), projectiles[projectileWhichKillsIndex].location) / projectiles[projectileWhichKillsIndex].caster:GetAttackProjectileSpeed()) 
+
 					if (timeTakenForProjectileToLand <= timeForBotAttackToLand) then
 						bot:Action_AttackUnit(enemyCreepTarget, true);
 					end
 				end
 				
 			end
+		end
 			
-		elseif alliedCreepTarget ~= nil then
-			local timeForBotAttackToLand = GetUnitToUnitDistance(bot, alliedCreepTarget) / bot:GetAttackProjectileSpeed()
+		if alliedCreepTarget ~= nil then
+			local timeForBotAttackToLand = (GetUnitToUnitDistance(bot, alliedCreepTarget) / bot:GetAttackProjectileSpeed()) + bot:GetAttackPoint() + (numberOfEnemyMeeleCreeps)
 			local projectiles = alliedCreepTarget:GetIncomingTrackingProjectiles()
 			for _,creep in pairs(enemyCreeps) do
 				local creepDistance = GetUnitToUnitDistance(alliedCreepTarget,creep)
@@ -343,14 +348,14 @@ local function heroLastHit(enemyHero, nearbyCreeps, enemyCreeps, botAttackDamage
 				if (#projectiles ~= 0) then
 					for index, projectile in pairs(projectiles) do
 						totalProjectilesDamage = totalProjectilesDamage + projectile.caster:GetAttackDamage()
-						if (totalProjectilesDamage >= alliedCreepTarget:GetHealth() or ((alliedCreepTarget:GetHealth() - totalProjectilesDamage) < botAttackDamage)) then
+						if ((alliedCreepTarget:GetHealth() - totalProjectilesDamage) <= botAttackDamage) then
 							projectileWhichKillsIndex = index
 						end
 					end
 				end
 				
 				if projectileWhichKillsIndex ~= nil and projectileWhichKillsIndex ~= 0 then
-					local timeTakenForProjectileToLand = (mutils.GetLocationToLocationDistance(alliedCreepTarget:GetLocation(), projectiles[projectileWhichKillsIndex].location) / projectiles[projectileWhichKillsIndex].caster:GetAttackProjectileSpeed()) + bot:GetAttackPoint() + (numberOfEnemyMeeleCreeps * 1.5)
+					local timeTakenForProjectileToLand = (mutils.GetLocationToLocationDistance(alliedCreepTarget:GetLocation(), projectiles[projectileWhichKillsIndex].location) / projectiles[projectileWhichKillsIndex].caster:GetAttackProjectileSpeed()) 
 					if (timeTakenForProjectileToLand <= timeForBotAttackToLand) then
 						bot:Action_AttackUnit(alliedCreepTarget, true);
 					end
@@ -388,6 +393,9 @@ local function heroBattleThink(enemyHero)
 		return
 	end
 	
+	if mutils.CanBeCast(abilities[1]) == true and enemyHero[1]:HasModifier("modifier_nevermore_shadowraze_debuff") == true then
+		return
+	end
 	if (pvpDistance ~= 0 and pvpDistance <= attackRange) then
 		bot:Action_AttackUnit( enemyHero[1], true )
 	end
@@ -461,7 +469,7 @@ local function AbilityUsageThink(botLevel, botAttackDamage, enemyHero, enemyCree
 			newYLocationQ = currentBotLocation.y
 		end
 		
-		DebugDrawCircle( Vector(newXLocationQ, newYLocationQ), 200, 0, 0, 255 )
+		--DebugDrawCircle( Vector(newXLocationQ, newYLocationQ), 200, 0, 0, 255 )
 		bot:Action_MoveDirectly(Vector(newXLocationQ, newYLocationQ))
 		if (bot:IsFacingLocation( optimalLocationQ, 50 )) then
 			bot:Action_UseAbility(abilities[1]);		
@@ -609,6 +617,7 @@ function Think()
 		heroLastHit(enemyHero, nearbyCreeps, enemyCreeps, botAttackDamage)
 		heroBattleThink(enemyHero)
 		AbilityUsageThink(botLevel, botAttackDamage, enemyHero, enemyCreeps, botManaLevel, botManaPercentage, botHealthLevel, botHealthPercentage)
+
 	end
 	-----------------------------------------------------------
 end
