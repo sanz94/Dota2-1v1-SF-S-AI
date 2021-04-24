@@ -527,4 +527,40 @@ function U.GetCreepType( creep )
 	end
 end
 
+function U.IsLastHitDesireGreatest( lastHitDesire, battleDesire, abilityUseDesire, moveDesire )
+
+	if (lastHitDesire > battleDesire) and (lastHitDesire > abilityUseDesire) and (lastHitDesire > moveDesire) then
+		return true
+	else
+		return false
+	end
+end
+
+function U.IsBattleDesireGreatest( lastHitDesire, battleDesire, abilityUseDesire, moveDesire )
+
+	if (battleDesire > lastHitDesire) and (battleDesire > abilityUseDesire) and (battleDesire > moveDesire) then
+		return true
+	else
+		return false
+	end
+end
+
+function U.IsAbilityUseDesireGreatest( lastHitDesire, battleDesire, abilityUseDesire, moveDesire )
+
+	if (abilityUseDesire > battleDesire) and (abilityUseDesire > lastHitDesire) and (abilityUseDesire > moveDesire) then
+		return true
+	else
+		return false
+	end
+end
+
+function U.IsMoveDesireGreatest( lastHitDesire, battleDesire, abilityUseDesire, moveDesire )
+
+	if (moveDesire > battleDesire) and (moveDesire > abilityUseDesire) and (moveDesire > lastHitDesire) then
+		return true
+	else
+		return false
+	end
+end
+
 return U;

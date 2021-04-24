@@ -27,6 +27,7 @@ local castQDesire = 0;
 local castWDesire = 0;
 local castEDesire = 0;
 local castRDesire = 0;
+local botBattleMode = "neutral"
 ----------------------------------------------------------------------------------------------------
 
 -- Hard coded values
@@ -36,6 +37,22 @@ local nCastRangeQ = 200
 local nCastRangeW = 450
 local nCastRangeE = 700	
 local razeRadius = 250
+
+local BOT_DESIRE_NONE = 0
+local BOT_DESIRE_VERY_LOW = 0.1
+local BOT_DESIRE_LOW = 0.25
+local BOT_DESIRE_MEDIUM = 0.5
+local BOT_DESIRE_HIGH = 0.75
+local BOT_DESIRE_VERY_HIGH = 0.9
+local BOT_DESIRE_ABSOLUTE = 1.0
+
+local BOT_ANIMATION_MOVING = 1502
+local BOT_ANIMATION_IDLE = 1500
+local BOT_ANIMATION_LASTHIT = 1504
+local BOT_ANIMATION_SPELLCAST = 1503
+
+local T1_TOWER_DPS = 100
+local T1_TOWER_POSITION = Vector(473.224609, 389.945801)
 ----------------------------------------------------------------------------------------------------
 
 -- All chat at game start
@@ -44,6 +61,7 @@ bot:ActionImmediate_Chat("Sharingan 1v1 Mid SF Bot",true)
 bot:ActionImmediate_Chat("This bot is still a work in progress, bugs and feedback are welcome",true)
 bot:ActionImmediate_Chat("Rules: No runes, No Sentry ward, No Rain Drops or Soul Ring and no Jungling or wave cutting",true)
 bot:ActionImmediate_Chat("First to two kills or destroying tower wins. Good luck and have fun!",true)
+
 ----------------------------------------------------------------------------------------------------
 
 -- Function to control courier
@@ -123,9 +141,9 @@ local function ConsiderQ(botLevel, enemyHero, enemyCreeps, botManaLevel, botMana
 	local manaCost   = abilities[1]:GetManaCost();
 	local nCastLocation = mutils.GetFaceTowardDistanceLocation( bot, nCastRangeQ )
 	
-	--if  mutils.CanBeCast(abilities[1]) == false or mutils.hasManaToCastSpells(botLevel, botManaLevel) then
-		--return 1;
-	--end
+	if  mutils.CanBeCast(abilities[1]) == false or mutils.hasManaToCastSpells(botLevel, botManaLevel) then
+		return 0;
+	end
 	
 	if ( botLevel >= 2 ) then
 		local enemyHeroInRazeRadius = bot:GetNearbyHeroes(nCastRangeQ+razeRadius, true, BOT_MODE_NONE);
@@ -164,9 +182,9 @@ local function ConsiderW(botLevel, enemyHero, enemyCreeps, botManaLevel, botMana
 	local nCastLocation = mutils.GetFaceTowardDistanceLocation( bot, nCastRangeW )
 
 	
-	--if  mutils.CanBeCast(abilities[2]) == false or mutils.hasManaToCastSpells(botLevel, botManaLevel) then
-		--return 0;
-	--end
+	if  mutils.CanBeCast(abilities[2]) == false or mutils.hasManaToCastSpells(botLevel, botManaLevel) then
+		return 0;
+	end
 	
 	if ( botLevel >= 2 ) then
 		local enemyHeroInRazeRadius = bot:GetNearbyHeroes(nCastRangeW+razeRadius, true, BOT_MODE_NONE);
@@ -206,9 +224,9 @@ local function ConsiderE(botLevel, enemyHero, enemyCreeps, botManaLevel, botMana
 	local manaCost   = abilities[3]:GetManaCost();
 	local nCastLocation = mutils.GetFaceTowardDistanceLocation( bot, nCastRangeE )
 	
-	--if  mutils.CanBeCast(abilities[3]) == false or mutils.hasManaToCastSpells(botLevel, botManaLevel) then
-		--return 0;
-	--end
+	if  mutils.CanBeCast(abilities[3]) == false or mutils.hasManaToCastSpells(botLevel, botManaLevel) then
+		return 0;
+	end
 	
 	if ( botLevel >= 2 ) then
 		local enemyHeroInRazeRadius = bot:GetNearbyHeroes(nCastRangeE+razeRadius, true, BOT_MODE_NONE);
@@ -220,6 +238,7 @@ local function ConsiderE(botLevel, enemyHero, enemyCreeps, botManaLevel, botMana
 		--end
 		
 		if #enemyHero ~= 0 and mutils.IsUnitNearLoc( enemyHero[1], nCastLocation, razeRadius -30, nCastPoint ) then
+			print("Return")
 			return 1, enemyHero[1]:GetLocation()	
 		end
 		
@@ -251,17 +270,86 @@ local function ConsiderR()
 end	
 ----------------------------------------------------------------------------------------------------
 
+-- Function called every frame to determine what items to buy
+----------------------------------------------------------------------------------------------------
+local function ItemPurchaseThink(botManaPercentage, botHealthPercentage)
+	
+	if itemsToBuy[1] ~= "item_flask" and (botHealthPercentage <= 60) then
+		table.insert(itemsToBuy, 1, "item_flask")
+	end
+	
+	if itemsToBuy[1] ~= "item_enchanted_mango" and (botManaPercentage <= 60) then
+		table.insert(itemsToBuy, 1, "item_enchanted_mango")
+	end
+	
+end
+----------------------------------------------------------------------------------------------------
+
 -- Function called every frame to determine bot positioning
 ----------------------------------------------------------------------------------------------------
-local function heroPosition(nearbyCreeps, enemyCreeps)
-
-	if enemyCreeps ~= nil and #enemyCreeps > 0 then
-		bot:Action_MoveToLocation(Vector(enemyCreeps[1]:GetLocation().x+400, enemyCreeps[1]:GetLocation().y+400))
-	elseif nearbyCreeps ~= nil and #nearbyCreeps > 0 then
-		bot:Action_MoveToLocation(Vector(nearbyCreeps[1]:GetLocation().x+100, nearbyCreeps[1]:GetLocation().y+100))
-	else
-		mutils.moveToT1Tower(bot)
+local function heroPosition(nearbyCreeps, enemyCreeps, enemyHero)
+	
+	local distanceBetweenClosestAndFarthestCreep
+	local positionNoCreeps = T1_TOWER_POSITION
+	local positionNoEnemyCreeps
+	local positionAggro
+	local positionNeutral
+	if nearbyCreeps ~= nil and #nearbyCreeps ~=0 then
+		positionNoEnemyCreeps = Vector(nearbyCreeps[1]:GetLocation().x+100, nearbyCreeps[1]:GetLocation().y+100)
 	end
+	if enemyCreeps ~= nil and #enemyCreeps ~=0 then
+		distanceBetweenClosestAndFarthestCreep = GetUnitToUnitDistance(enemyCreeps[1], enemyCreeps[#enemyCreeps])
+		positionAggro = Vector(enemyCreeps[#enemyCreeps]:GetLocation().x+(distanceBetweenClosestAndFarthestCreep/2), enemyCreeps[#enemyCreeps]:GetLocation().y+(distanceBetweenClosestAndFarthestCreep/2))
+		positionNeutral =  Vector(enemyCreeps[1]:GetLocation().x+400, enemyCreeps[1]:GetLocation().y+400)
+	end
+	
+	if bot:WasRecentlyDamagedByTower(3) then
+		if #nearbyCreeps > 1 then
+			return BOT_DESIRE_NONE
+		else
+			if (GetUnitToLocationDistance(bot, T1_TOWER_POSITION) > 100) then
+				return BOT_DESIRE_VERY_HIGH, T1_TOWER_POSITION
+			end
+		end
+	end
+	if botBattleMode == "defend" and #enemyHero ~= 0 then
+		local distanceToExitDamageRadius = 950 - (mutils.GetLocationToLocationDistance(bot:GetLocation(), enemyHero[1]:GetLocation()))
+		local timeToExitDamageRadius 
+		if distanceToExitDamageRadius >= 0 then
+			timeToExitDamageRadius = distanceToExitDamageRadius / bot:GetCurrentMovementSpeed()
+		else
+			timeToExitDamageRadius = 0
+		end
+		
+		print("CHECK", enemyHero[1]:GetEstimatedDamageToTarget(true, bot, timeToExitDamageRadius, DAMAGE_TYPE_ALL))
+		if(GetUnitToUnitDistance(bot, enemyHero[1]) < 950 and enemyHero[1]:GetEstimatedDamageToTarget(true, bot, timeToExitDamageRadius, DAMAGE_TYPE_ALL) > bot:GetHealth()) then
+			if (GetUnitToLocationDistance(bot,  Vector(enemyHero[1]:GetLocation().x+955, enemyHero[1]:GetLocation().y+955)) > 50) then
+				return BOT_DESIRE_VERY_HIGH,  Vector(enemyHero[1]:GetLocation().x+955, enemyHero[1]:GetLocation().y+955)
+			end
+		end
+	end
+		
+	if enemyCreeps ~= nil and #enemyCreeps > 0 then
+		distanceBetweenClosestAndFarthestCreep = GetUnitToUnitDistance(enemyCreeps[1], enemyCreeps[#enemyCreeps])
+		if (distanceBetweenClosestAndFarthestCreep > 500) and botBattleMode == "aggro" then
+			if (GetUnitToLocationDistance(bot, positionAggro) > 100) then
+				return BOT_DESIRE_MEDIUM, positionAggro
+			end
+		else
+			if (GetUnitToLocationDistance(bot, Vector(enemyCreeps[1]:GetLocation().x+400, enemyCreeps[1]:GetLocation().y+400)) > 100) then
+				return BOT_DESIRE_MEDIUM, positionNeutral
+			end
+		end
+	elseif nearbyCreeps ~= nil and #nearbyCreeps > 0 then
+		if (GetUnitToLocationDistance(bot,  Vector(nearbyCreeps[1]:GetLocation().x+100, nearbyCreeps[1]:GetLocation().y+100)) > 50) then
+			return BOT_DESIRE_MEDIUM, positionNoEnemyCreeps
+		end
+	else
+		if (GetUnitToLocationDistance(bot,  positionNoCreeps) > 50) then
+			return BOT_DESIRE_MEDIUM, positionNoCreeps
+		end
+	end
+	return BOT_DESIRE_NONE
 end
 ----------------------------------------------------------------------------------------------------
 
@@ -269,27 +357,6 @@ end
 ----------------------------------------------------------------------------------------------------
 local function heroLastHit(enemyHero, nearbyCreeps, enemyCreeps, botAttackDamage)
 
-	if enemyCreeps ~= nil and #enemyCreeps > 0 then
-		for i=1,#enemyCreeps,1 do
-			if enemyCreeps[i]:GetHealth() < botAttackDamage then
-				--print("Last hitting enemy creep")
-				bot:Action_AttackUnit(enemyCreeps[i], false)
-				return
-			end
-		end
-	end
-	
-	if nearbyCreeps ~= nil and #nearbyCreeps > 0 then
-		for i=1,#nearbyCreeps,1 do
-			if nearbyCreeps[i]:GetHealth() < botAttackDamage then
-				--print("Denying allied creep")
-				bot:Action_AttackUnit(nearbyCreeps[i], false)
-				return
-			end
-		end
-	end
-	
-		
 	local alliedCreepTarget = mutils.GetWeakestUnit(nearbyCreeps);
 	local enemyCreepTarget = mutils.GetWeakestUnit(enemyCreeps);
 	
@@ -297,14 +364,19 @@ local function heroLastHit(enemyHero, nearbyCreeps, enemyCreeps, botAttackDamage
 	local numberOfAlliedMeeleCreeps = 0
 	
 	if enemyCreepTarget == nil and alliedCreepTarget == nil then
-		return
+		return BOT_DESIRE_NONE
 	else
 		if enemyCreepTarget ~= nil then
-
-			local timeForBotAttackToLand = (GetUnitToUnitDistance(bot, enemyCreepTarget) / bot:GetAttackProjectileSpeed()) + bot:GetAttackPoint() + (numberOfAlliedMeeleCreeps)
+			
+			local distanceBetweenCreepAndBot = GetUnitToUnitDistance(bot, enemyCreepTarget)
+			local timeForBotAttackToLand = 0
+			if (distanceBetweenCreepAndBot > 500) then
+				 timeForBotAttackToLand = (distanceBetweenCreepAndBot / bot:GetAttackProjectileSpeed()) + ((distanceBetweenCreepAndBot - 500) / bot:GetCurrentMovementSpeed()) + bot:GetAttackPoint() 
+			else
+				 timeForBotAttackToLand = (distanceBetweenCreepAndBot / bot:GetAttackProjectileSpeed()) + bot:GetAttackPoint()  
+			end
 			local projectiles = enemyCreepTarget:GetIncomingTrackingProjectiles()
 			for _,creep in pairs(nearbyCreeps) do
-				local creepDistance = GetUnitToUnitDistance(enemyCreepTarget,creep)
 				if creep:IsFacingLocation(enemyCreepTarget:GetLocation(), 10) then
 					numberOfAlliedMeeleCreeps = numberOfAlliedMeeleCreeps + 1
 				end
@@ -322,20 +394,31 @@ local function heroLastHit(enemyHero, nearbyCreeps, enemyCreeps, botAttackDamage
 					end
 				end
 				
-				
 				if projectileWhichKillsIndex ~= nil and projectileWhichKillsIndex ~= 0 then
 					local timeTakenForProjectileToLand = (mutils.GetLocationToLocationDistance(enemyCreepTarget:GetLocation(), projectiles[projectileWhichKillsIndex].location) / projectiles[projectileWhichKillsIndex].caster:GetAttackProjectileSpeed()) 
-
 					if (timeTakenForProjectileToLand <= timeForBotAttackToLand) then
-						bot:Action_AttackUnit(enemyCreepTarget, true);
+						print("LH2")
+						return BOT_DESIRE_MEDIUM, enemyCreepTarget
 					end
 				end
 				
 			end
+			if #projectiles == 0 then					
+				if enemyCreepTarget:GetHealth() < botAttackDamage + (numberOfAlliedMeeleCreeps * 0.5) then
+					print("LH3")
+					return BOT_DESIRE_MEDIUM, enemyCreepTarget
+				end
+			end
 		end
 			
 		if alliedCreepTarget ~= nil then
-			local timeForBotAttackToLand = (GetUnitToUnitDistance(bot, alliedCreepTarget) / bot:GetAttackProjectileSpeed()) + bot:GetAttackPoint() + (numberOfEnemyMeeleCreeps)
+			local distanceBetweenCreepAndBot = GetUnitToUnitDistance(bot, alliedCreepTarget)
+			local timeForBotAttackToLand = 0
+			if (distanceBetweenCreepAndBot > 500) then
+				 timeForBotAttackToLand = (distanceBetweenCreepAndBot / bot:GetAttackProjectileSpeed()) + ((distanceBetweenCreepAndBot - 500) / bot:GetCurrentMovementSpeed()) + bot:GetAttackPoint() 
+			else
+				 timeForBotAttackToLand = (distanceBetweenCreepAndBot / bot:GetAttackProjectileSpeed()) + bot:GetAttackPoint()  
+			end
 			local projectiles = alliedCreepTarget:GetIncomingTrackingProjectiles()
 			for _,creep in pairs(enemyCreeps) do
 				local creepDistance = GetUnitToUnitDistance(alliedCreepTarget,creep)
@@ -357,49 +440,195 @@ local function heroLastHit(enemyHero, nearbyCreeps, enemyCreeps, botAttackDamage
 				if projectileWhichKillsIndex ~= nil and projectileWhichKillsIndex ~= 0 then
 					local timeTakenForProjectileToLand = (mutils.GetLocationToLocationDistance(alliedCreepTarget:GetLocation(), projectiles[projectileWhichKillsIndex].location) / projectiles[projectileWhichKillsIndex].caster:GetAttackProjectileSpeed()) 
 					if (timeTakenForProjectileToLand <= timeForBotAttackToLand) then
-						bot:Action_AttackUnit(alliedCreepTarget, true);
+						return BOT_DESIRE_MEDIUM, alliedCreepTarget
 					end
 				end
 				
 			end
+			
+			if #projectiles == 0 then
+				if enemyCreeps ~= nil and #enemyCreeps > 0 then
+					for i=1,#enemyCreeps,1 do
+						if enemyCreeps[i]:GetHealth() < botAttackDamage + (numberOfEnemyMeeleCreeps * 0.5) then
+							return BOT_DESIRE_MEDIUM, enemyCreeps[i]
+						end
+					end
+				end
+			end
+			
 		end
 	end
+	
+	if enemyCreeps ~= nil and #enemyCreeps > 0 then
+		for i=1,#enemyCreeps,1 do
+			if enemyCreeps[i]:GetHealth() < botAttackDamage then
+				print("LH1")
+				return BOT_DESIRE_MEDIUM, enemyCreeps[i]
+			end
+		end
+	end
+	
+	if nearbyCreeps ~= nil and #nearbyCreeps > 0 then
+		for i=1,#nearbyCreeps,1 do
+			if nearbyCreeps[i]:GetHealth() < botAttackDamage then
+				return BOT_DESIRE_MEDIUM, nearbyCreeps[i]
+			end
+		end
+	end
+			
+			
+	return BOT_DESIRE_NONE
 end
 ----------------------------------------------------------------------------------------------------
 
 -- Function called every frame to determine what items to buy
 ----------------------------------------------------------------------------------------------------
-local function ItemPurchaseThink(botManaPercentage, botHealthPercentage)
+local function heroBattleThink(enemyHero, nearbyCreeps)
 	
-	if itemsToBuy[1] ~= "item_flask" and (botHealthPercentage <= 60) then
-		table.insert(itemsToBuy, 1, "item_flask")
+	if #enemyHero == 0 then
+		return BOT_DESIRE_NONE
 	end
 	
-	if itemsToBuy[1] ~= "item_enchanted_mango" and (botManaPercentage <= 60) then
-		table.insert(itemsToBuy, 1, "item_enchanted_mango")
+	local towersInRange = bot:GetNearbyTowers( 700, true )
+	local meeleCreepCurrentDamage = 0
+	local rangeCreepCurrentDamage = 0
+	
+	local enemyMeeleCreepsNearBot = bot:GetNearbyLaneCreeps( 100, true )
+	if #enemyMeeleCreepsNearBot > 0 then
+		meeleCreepCurrentDamage = enemyMeeleCreepsNearBot[1]:GetAttackDamage()
 	end
 	
-end
-----------------------------------------------------------------------------------------------------
-
--- Function called every frame to determine what items to buy
-----------------------------------------------------------------------------------------------------
-local function heroBattleThink(enemyHero)
+	local enemyRangeCreepsHittingBot = 0
+	
+	local botProjectiles = bot:GetIncomingTrackingProjectiles()
+	if (#botProjectiles ~= 0) then
+		for index, projectile in pairs(botProjectiles) do
+			if projectile.caster:IsCreep() and projectile.caster:GetMaxHealth() < 900 then
+				enemyRangeCreepsHittingBot = enemyRangeCreepsHittingBot + 1
+				rangeCreepCurrentDamage = projectile.caster:GetAttackDamage()
+			end
+		end
+	end
+	
+	local enemyCreepsDPS = (#enemyMeeleCreepsNearBot * meeleCreepCurrentDamage) + (enemyRangeCreepsHittingBot * rangeCreepCurrentDamage)
+	
+	
+	local alliedMeeleCreepsNearEnemy = enemyHero[1]:GetNearbyLaneCreeps( 100, true )
+	if #alliedMeeleCreepsNearEnemy > 0 then
+		meeleCreepCurrentDamage = alliedMeeleCreepsNearEnemy[1]:GetAttackDamage()
+	end
+	
+	local alliedRangeCreepsHittingEnemy = 0
+	
+	local enemyProjectiles = enemyHero[1]:GetIncomingTrackingProjectiles()
+	if (#enemyProjectiles ~= 0) then
+		for index, projectile in pairs(enemyProjectiles) do
+			if projectile.caster:IsCreep() and projectile.caster:GetMaxHealth() < 900 then
+				alliedRangeCreepsHittingEnemy = alliedRangeCreepsHittingEnemy + 1
+				rangeCreepCurrentDamage = projectile.caster:GetAttackDamage()
+			end
+		end
+	end
+	
+	local alliedCreepsDPS = (#alliedMeeleCreepsNearEnemy * meeleCreepCurrentDamage) + (alliedRangeCreepsHittingEnemy * rangeCreepCurrentDamage)
+	
+	local botAttacksPerSecond = 1/bot:GetAttackSpeed()
+	local botDPS = bot:GetAttackDamage() * botAttacksPerSecond
+	
+	local enemyAttacksPerSecond = 1/enemyHero[1]:GetAttackSpeed()
+	local enemyDPS = enemyHero[1]:GetAttackDamage() * botAttacksPerSecond
+	
+	local enemyHeroEstimatedDamage = enemyHero[1]:GetEstimatedDamageToTarget( true, bot, 3, DAMAGE_TYPE_ALL )
+	local botEstimatedDamage = bot:GetEstimatedDamageToTarget( true, enemyHero[1], 3, DAMAGE_TYPE_ALL )
+	
+	local timeForBotToDie = bot:GetHealth() / (enemyDPS + enemyCreepsDPS)
+	local timeForEnemeyToDie = enemyHero[1]:GetHealth() / (botDPS + alliedCreepsDPS)
+	
+	if enemyHero[1]:GetHealth() < bot:GetHealth() then
+		if #enemyMeeleCreepsNearBot == 0 then
+			botBattleMode = "aggro"
+		elseif (enemyDPS + enemyCreepsDPS) <= (botDPS + alliedCreepsDPS) then
+			botBattleMode = "aggro"
+		else
+			botBattleMode = "neutral"
+		end
+	elseif bot:GetHealth() < enemyHero[1]:GetHealth() and timeForBotToDie < timeForEnemeyToDie then
+		botBattleMode = "defend"
+	else
+		botBattleMode = "neutral"
+	end
+	
+	print("Current mode: ", botBattleMode)
+	
+	if towersInRange ~= nil and #towersInRange > 0 then
+		local timeToKillEnemy = enemyHero[1]:GetHealth() / (botDPS + alliedCreepsDPS)
+		local timeToKillBot = bot:GetHealth() / (enemyDPS + T1_TOWER_DPS + enemyCreepsDPS)
+		if (timeToKillBot < timeToKillEnemy) then
+			return BOT_DESIRE_NONE
+		end
+	end
 	
 	local pvpDistance = GetUnitToUnitDistance(bot, enemyHero[1])
+	--if #enemyHero == 0 or (mutils.CanBeCast(abilities[1]) == true and enemyHero[1]:HasModifier("modifier_nevermore_shadowraze_debuff") == true) then
+		--return BOT_DESIRE_NONE
+	--end
+
 	
-	if bot:WasRecentlyDamagedByAnyHero(1) then
-		bot:Action_AttackUnit( enemyHero[1], true )
-		return
+	if bot:WasRecentlyDamagedByTower(1) then
+		if #nearbyCreeps ~=0 then
+			return BOT_DESIRE_VERY_HIGH, nearbyCreeps[1]
+		else
+			return BOT_DESIRE_NONE
+		end
 	end
 	
-	if mutils.CanBeCast(abilities[1]) == true and enemyHero[1]:HasModifier("modifier_nevermore_shadowraze_debuff") == true then
-		return
-	end
-	if (pvpDistance ~= 0 and pvpDistance <= attackRange) then
-		bot:Action_AttackUnit( enemyHero[1], true )
+	if botEstimatedDamage > enemyHero[1]:GetHealth() then
+		local timeToKillEnemy = enemyHero[1]:GetHealth() / (botDPS + alliedCreepsDPS)
+		local timeToKillBot = bot:GetHealth() / (enemyDPS + enemyCreepsDPS)
+
+		if (timeToKillEnemy < timeToKillBot) then
+			return BOT_DESIRE_ABSOLUTE, enemyHero[1]
+		else
+			return BOT_DESIRE_NONE
+		end
 	end
 	
+	if enemyHeroEstimatedDamage > bot:GetHealth() then
+		return BOT_DESIRE_NONE
+	end
+
+	if botBattleMode == "neutral" then
+		if bot:WasRecentlyDamagedByAnyHero(1) then
+			return BOT_DESIRE_MEDIUM, enemyHero[1]
+		end
+	end
+	
+	if botBattleMode == "aggro" then
+		local timeToKillBot = bot:GetHealth() / (enemyDPS + enemyCreepsDPS)
+		local timeToKillEnemy = enemyHero[1]:GetHealth() / (botDPS + alliedCreepsDPS) 
+		print("Time to kill bot : ", timeToKillBot)
+		print("Time to kill enemy : ", timeToKillEnemy)
+		if timeToKillBot > timeToKillEnemy then
+			return BOT_DESIRE_HIGH, enemyHero[1]
+		else
+			return BOT_DESIRE_NONE
+		end
+		
+		if (pvpDistance ~= 0 and pvpDistance <= attackRange) then
+			if (bot:GetLevel() <= 6 and #(bot:GetNearbyLaneCreeps( 200, true )) > 1) then
+				return BOT_DESIRE_NONE
+			else
+				return BOT_DESIRE_HIGH, enemyHero[1]
+			end
+		end
+		
+		local botAnimActivity = bot:GetAnimActivity()
+		if (botAnimActivity == BOT_ANIMATION_IDLE) then
+			print("Attacking because bot is idle")
+			return BOT_DESIRE_HIGH, enemyHero[1]
+		end
+	end
+	return BOT_DESIRE_NONE
 end
 ----------------------------------------------------------------------------------------------------
 
@@ -412,7 +641,7 @@ local function AbilityUsageThink(botLevel, botAttackDamage, enemyHero, enemyCree
 	local currentBotLocation = bot:GetLocation()
 	
 	if mutils.CantUseAbility(bot) or mutils.hasManaToCastSpells(botLevel, botManaLevel) == false then
-		return
+		return BOT_DESIRE_NONE
 	end
 	
 	--Desire to cast spells based on current hero level
@@ -433,15 +662,12 @@ local function AbilityUsageThink(botLevel, botAttackDamage, enemyHero, enemyCree
 	castWDesire, optimalLocationW = ConsiderW(botLevel, enemyHero, enemyCreeps, botManaLevel, botManaPercentage, botHealthLevel, botHealthPercentage);
 	castEDesire, optimalLocationE = ConsiderE(botLevel, enemyHero, enemyCreeps, botManaLevel, botManaPercentage, botHealthLevel, botHealthPercentage);
 	castRDesire = ConsiderR(enemy);
-		
+	
 	if castRDesire > 0 then
-		bot:Action_ClearActions(true);
-		bot:Action_UseAbility(abilities[4]);		
-		return
+		return BOT_DESIRE_LOW, abilities[4]
 	end
 	
 	if castQDesire > 0 then
-		bot:Action_ClearActions(true);
 		
 		local newXLocationQ = 0
 		local newYLocationQ = 0
@@ -469,18 +695,13 @@ local function AbilityUsageThink(botLevel, botAttackDamage, enemyHero, enemyCree
 			newYLocationQ = currentBotLocation.y
 		end
 		
-		--DebugDrawCircle( Vector(newXLocationQ, newYLocationQ), 200, 0, 0, 255 )
-		bot:Action_MoveDirectly(Vector(newXLocationQ, newYLocationQ))
 		if (bot:IsFacingLocation( optimalLocationQ, 50 )) then
-			bot:Action_UseAbility(abilities[1]);		
+			return BOT_DESIRE_MEDIUM, Vector(newXLocationQ, newYLocationQ), abilities[1]
 		end
-		return
 	end
 	
 	if castWDesire > 0 then
-		bot:Action_ClearActions(true);
-		
-		
+
 		local newXLocationW = 0
 		local newYLocationW = 0
 		
@@ -506,20 +727,14 @@ local function AbilityUsageThink(botLevel, botAttackDamage, enemyHero, enemyCree
 		else
 			newYLocationW = currentBotLocation.y
 		end
-		
-		DebugDrawCircle( Vector(newXLocationW, newYLocationW), 200, 0, 255, 0 )
-		bot:Action_MoveDirectly(Vector(newXLocationW, newYLocationW))
-		
+			
 		if (bot:IsFacingLocation( optimalLocationW, 25 )) then
-			bot:Action_UseAbility(abilities[2]);		
+			return BOT_DESIRE_MEDIUM, Vector(newXLocationW, newYLocationW), abilities[2]			
 		end
-		return
 	end
 	
 	if castEDesire > 0 then
-		bot:Action_ClearActions(true);
-		
-		
+	
 		local newXLocationE = 0
 		local newYLocationE = 0
 		
@@ -545,16 +760,12 @@ local function AbilityUsageThink(botLevel, botAttackDamage, enemyHero, enemyCree
 		else
 			newYLocationE = currentBotLocation.y
 		end
-		DebugDrawCircle( Vector(newXLocationE, newYLocationE), 200, 255, 0, 0 )
-		bot:Action_MoveDirectly(Vector(newXLocationE, newYLocationE))
 		
 		if (bot:IsFacingLocation( optimalLocationE, 10 )) then
-			bot:Action_UseAbility(abilities[3]);		
+			return BOT_DESIRE_MEDIUM, Vector(newXLocationE, newYLocationE), abilities[3]
 		end
-
-		return
 	end
-	
+	return BOT_DESIRE_NONE
 end
 ----------------------------------------------------------------------------------------------------
 
@@ -563,6 +774,7 @@ function Think()
 
 	-- Early exit conditions
 	if bot:IsUsingAbility() then
+		print("TEST")
 		return
 	end
 	
@@ -584,6 +796,7 @@ function Think()
 	-- PreGame
 	-----------------------------------------------------------
 	if DotaTime() < 0 then
+
 			itemWard = mutils.GetItemWard(bot);
 			if itemWard == nil then
 				wardPlaced = true
@@ -613,11 +826,41 @@ function Think()
 		AbilityLevelUpThink()
 		ItemPurchaseThink(botManaPercentage, botHealthPercentage)
 
-		heroPosition(nearbyCreeps, enemyCreeps)
-		heroLastHit(enemyHero, nearbyCreeps, enemyCreeps, botAttackDamage)
-		heroBattleThink(enemyHero)
-		AbilityUsageThink(botLevel, botAttackDamage, enemyHero, enemyCreeps, botManaLevel, botManaPercentage, botHealthLevel, botHealthPercentage)
-
+		local lastHitDesire, lastHitTarget = heroLastHit(enemyHero, nearbyCreeps, enemyCreeps, botAttackDamage)
+		local battleDesire, battleTarget = heroBattleThink(enemyHero, nearbyCreeps)
+		local abilityUseDesire, abilityMoveLocation, abilityToUse = AbilityUsageThink(botLevel, botAttackDamage, enemyHero, enemyCreeps, botManaLevel, botManaPercentage, botHealthLevel, botHealthPercentage)
+		local moveDesire, moveLocation = heroPosition(nearbyCreeps, enemyCreeps, enemyHero)
+		
+		print("AbilityUseDesire -> ", abilityUseDesire)
+		print("BattleDesire -> ", battleDesire)
+		print("MoveDesire -> ", moveDesire)
+		print("LastHitDesire -> ", lastHitDesire)
+		
+		if mutils.IsAbilityUseDesireGreatest(lastHitDesire, battleDesire, abilityUseDesire, moveDesire) then
+			print("--------------- USING ABILITY ---------------")
+			bot:Action_MoveDirectly(abilityMoveLocation)
+			bot:Action_UseAbility(abilityToUse)
+			return
+		end
+		
+		if mutils.IsBattleDesireGreatest(lastHitDesire, battleDesire, abilityUseDesire, moveDesire) then
+			print("--------------- BATTLING ---------------")
+			bot:Action_AttackUnit(battleTarget, true)
+			return
+		end
+		
+		if mutils.IsMoveDesireGreatest(lastHitDesire, battleDesire, abilityUseDesire, moveDesire) then
+			print("--------------- MOVING ---------------")
+			bot:Action_MoveDirectly(moveLocation)
+			bot:Action_MoveDirectly(Vector(moveLocation.x - 1, moveLocation.y - 1))
+			return
+		end
+		
+		if mutils.IsLastHitDesireGreatest(lastHitDesire, battleDesire, abilityUseDesire, moveDesire) then
+			print("--------------- LAST HITTING ---------------")
+			bot:Action_AttackUnit(lastHitTarget, true)
+			return
+		end
 	end
 	-----------------------------------------------------------
 end
