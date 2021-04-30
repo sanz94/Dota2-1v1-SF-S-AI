@@ -405,17 +405,58 @@ function U.GetWeakestUnit(units)
 	return lowestUnit;
 end
 
-function GetItemWardSlot(bot)
-	return bot:FindItemSlot("item_ward_observer")
+local function GetItem(bot, item_name)
+   local itemSlot = bot:FindItemSlot(item_name)
+   if itemSlot == -1 then
+      return nil
+   else
+      return bot:GetItemInSlot(itemSlot)
+   end
 end
 
 function U.GetItemWard(bot)
-	local itemWardSlot = GetItemWardSlot(bot)
-	if itemWardSlot > 8 then
-		return nil
-	else
-		return bot:GetItemInSlot(GetItemWardSlot(bot))
-	end
+   return GetItem(bot, "item_ward_observer")
+end
+
+function U.GetItemFlask(bot)
+   return GetItem(bot, "item_flask")
+end
+
+function U.GetItemMango(bot)
+   return GetItem(bot, "item_enchanted_mango")
+end
+
+function U.GetItemTPScroll(bot)
+   return GetItem(bot, "item_tpscroll")
+end
+
+function U.GetItemFaerieFire(bot)
+   return GetItem(bot, "item_faerie_fire")
+end
+
+function U.GetT1Location()
+  return GetTower(GetTeam(), TOWER_MID_1):GetLocation()
+end
+
+function U.IsHealing(bot)
+  return bot:HasModifier("modifier_flask_healing")
+end
+
+function U.IsTeleporting(bot)
+  return bot:HasModifier("modifier_teleporting")
+end
+
+function U.enum(entries)
+  local objects = {}
+  for id, name in pairs(entries) do
+    local object = {
+      id=id,
+      name=name
+    }
+    objects[name] = object
+    objects[id] = object
+  end
+  return objects
 end
 
 function U.IsUnitNearLoc( nUnit, vLoc, nRange, nDely )
