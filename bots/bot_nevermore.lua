@@ -280,21 +280,6 @@ local function ConsiderR()
 end	
 ----------------------------------------------------------------------------------------------------
 
--- Function called every frame to determine what items to buy
-----------------------------------------------------------------------------------------------------
-local function ItemPurchaseThink(botManaPercentage, botHealthPercentage)
-	
-	if itemsToBuy[1] ~= "item_flask" and (botHealthPercentage <= 60) then
-		table.insert(itemsToBuy, 1, "item_flask")
-	end
-	
-	if itemsToBuy[1] ~= "item_enchanted_mango" and (botManaPercentage <= 60) then
-		table.insert(itemsToBuy, 1, "item_enchanted_mango")
-	end
-	
-end
-----------------------------------------------------------------------------------------------------
-
 -- Function called every frame to determine bot positioning
 ----------------------------------------------------------------------------------------------------
 local function heroPosition(nearbyCreeps, enemyCreeps, enemyHero)
@@ -777,17 +762,71 @@ local function AbilityUsageThink(botLevel, botAttackDamage, enemyHero, enemyCree
 	end
 	return BOT_DESIRE_NONE
 end
+
+----------------------------------------------------------------------------------------------------
+-- Function called every frame to determine what items to buy
+----------------------------------------------------------------------------------------------------
+local function ItemPurchaseThink(botManaPercentage, botHealthPercentage)
+  if bot:DistanceFromFountain() <= 5 and mutils.GetItemTPScroll(bot) == nil then
+    table.insert(itemToBuy, 1, "item_tpscroll")
+  end
+
+	if itemsToBuy[1] ~= "item_flask" and (botHealthPercentage <= 0.6) then
+		table.insert(itemsToBuy, 1, "item_flask")
+	end
+
+	if itemsToBuy[1] ~= "item_enchanted_mango" and (botManaPercentage <= 0.6) then
+		table.insert(itemsToBuy, 1, "item_enchanted_mango")
+	end
+end
+
+----------------------------------------------------------------------------------------------------
+-- Function called every frame to determine if and what item(s) to use
+----------------------------------------------------------------------------------------------------
+local function ItemUsageThink(botManaLevel, botManaPercentage, botHealthLevel, botHealthPercentage)
+  -- Using Faerie Fire when needed is top priority
+  if botHealthLevel <= 85 then
+    faerieFire = mutils.GetItemFaerieFire(bot)
+    if faerieFire ~= nil then
+      bot:Action_UseAbility(faerieFire)
+      return botState.STATE_HEALING
+    end
+  end
+
+  local item_to_use = nil
+
+  -- Using Salve or Mango when needed
+  local state = nil
+  if botHealthPercentage <= 0.6 then
+    item_to_use = mutils.GetItemFlask(bot)
+    state = botState.STATE_HEALING
+  elseif botManaPercentage <= 0.6 then
+    item_to_use = mutils.GetItemMango(bot)
+    state = botState.STATE_IDLE
+  end
+
+  if item_to_use ~= nil then
+    bot:Action_UseAbilityOnEntity(item_to_use, bot)
+    return state
+  end
+
+  -- TP to T1 if we are in base
+  -- The assumption here is that this method will be called only after game starts
+  -- (i.e., creeps started)
+  local tpScroll = mutils.GetItemTPScroll(bot)
+  if bot:DistanceFromFountain() <= 5 and tpScroll ~= nil then
+    print("using tp_scroll from "..tostring(bot:DistanceFromFountain()).." on location: "..tostring(mutils.GetT1Location()))
+    bot:Action_UseAbilityOnLocation(tpScroll, mutils.GetT1Location())
+    return botState.STATE_TELEPORTING
+  end
+
+  return botState.STATE_IDLE
+end
+
 ----------------------------------------------------------------------------------------------------
 
 -- Function that is called every frame, does a complete bot takeover
 function Think()
-
-	-- Early exit conditions
-	if bot:IsUsingAbility() then
-		print("TEST")
-		return
-	end
-	
 	-- Initializations
 	-----------------------------------------------------------
 	dotaTime = DotaTime()
@@ -832,13 +871,28 @@ function Think()
 	-- Brain of the bot
 	-----------------------------------------------------------		
 	if dotaTime > 30 or creepBlocking == false then
-		CourierUsageThink()
+    ItemPurchaseThink(botManaPercentage, botHealthPercentage)
+    state = ItemUsageThink(botManaLevel, botManaPercentage, botHealthLevel, botHealthPercentage)
+    if mutils.IsHealing(bot) then
+      state = botState.STATE_HEALING
+    elseif mutils.IsTeleporting(bot) then
+      state = botState.STATE_TELEPORTING
+    end
+
+    print("Current State: "..tostring(state.name))
+
+    CourierUsageThink()
 		AbilityLevelUpThink()
-		ItemPurchaseThink(botManaPercentage, botHealthPercentage)
+
+    if state == botState.STATE_TELEPORTING then
+      print("doing nothing because teleporting")
+      return
+    end
 
 		local lastHitDesire, lastHitTarget = heroLastHit(enemyHero, nearbyCreeps, enemyCreeps, botAttackDamage)
 		local battleDesire, battleTarget = heroBattleThink(enemyHero, nearbyCreeps)
 		local abilityUseDesire, abilityMoveLocation, abilityToUse = AbilityUsageThink(botLevel, botAttackDamage, enemyHero, enemyCreeps, botManaLevel, botManaPercentage, botHealthLevel, botHealthPercentage)
+    -- TODO: Move to a safe position when state is STATE_HEALING
 		local moveDesire, moveLocation = heroPosition(nearbyCreeps, enemyCreeps, enemyHero)
 		
 		print("AbilityUseDesire -> ", abilityUseDesire)
