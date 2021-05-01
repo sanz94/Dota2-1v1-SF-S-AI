@@ -4,6 +4,8 @@ local RB = Vector(-7174.000000, -6671.00000,  0.000000)
 local DB = Vector(7023.000000, 6450.000000, 0.000000)
 local maxGetRange = 1600;
 local maxAddedRange = 200;
+local DEGREE_VALUE_ONE_RADIAN = 57.3248407643
+local SF_TIME_TO_TURN_180_DEGREES = 0.10472
 
 local fSpamThreshold = 0.55;
 
@@ -359,14 +361,33 @@ function U.moveToT1Tower(bot)
 	bot:Action_AttackMove(Vector(473.224609, 389.945801))
 end
 
-function U.blockCreepWave(bot, nearbyCreeps)
+function U.blockCreepWave(bot, enemyHero, enemyCreeps, nearbyCreeps)
 	print("Blocking creep wave")
+	local creepToBlock
 	local farthestCreepAlongLane
+	local lowestDistanceToBlock = 999999
 	local lowestDistance = 999999
 	local botLocation = bot:GetLocation()
-		
+	
+	-- If near hero
+	if enemyHero~= nil and #enemyHero ~= 0 then
+		if GetUnitToUnitDistance(bot, enemyHero[1]) < 550 then
+			print("Stopping block")
+			return false
+		end
+	end
+	
+	
+	-- If near enemyCreeps
+	if enemyCreeps~= nil and #enemyCreeps ~= 0 then
+		if GetUnitToUnitDistance(bot, enemyCreeps[1]) < 200 then
+			print("Stopping block")
+			return false
+		end
+	end
+	
 	-- If near tower
-	if botLocation.x <= 500 and botLocation.y <= 300 then
+	if GetAmountAlongLane(LANE_MID, bot:GetLocation()).amount > 0.537 then
 		if #nearbyCreeps > 0 then
 			print("Stopping block")
 			return false
@@ -378,13 +399,25 @@ function U.blockCreepWave(bot, nearbyCreeps)
 		for i=1,#nearbyCreeps,1 do
 			local creepDistance = GetUnitToLocationDistance(nearbyCreeps[i], Vector(-3293.869141, -3455.594727))
 			local heroDistance = GetUnitToLocationDistance(bot, Vector(-3293.869141, -3455.594727))
-			if creepDistance < lowestDistance and creepDistance > heroDistance then
+			if creepDistance < lowestDistanceToBlock and creepDistance > heroDistance then
+				lowestDistanceToBlock = creepDistance
+				creepToBlock = nearbyCreeps[i]
+			end
+			if creepDistance < lowestDistance then
 				lowestDistance = creepDistance
 				farthestCreepAlongLane = nearbyCreeps[i]
 			end
 		end
 		
-		bot:Action_AttackMove(Vector(farthestCreepAlongLane:GetLocation().x-100, farthestCreepAlongLane:GetLocation().y-100))
+		if farthestCreepAlongLane ~= nil and farthestCreepAlongLane ~= creepToBlock and GetUnitToUnitDistance(farthestCreepAlongLane, bot) > 600 then
+			return false
+		end
+		
+		if creepToBlock == nil then
+			return false
+		end
+		
+		bot:Action_AttackMove(Vector(creepToBlock:GetLocation().x-75, creepToBlock:GetLocation().y-75))
 		return true
 	end
 	
@@ -461,7 +494,9 @@ end
 
 function U.IsUnitNearLoc( nUnit, vLoc, nRange, nDely )
 
-	if GetUnitToLocationDistance( nUnit, vLoc ) >= 250
+	if nUnit == nil then return false end
+
+	if GetUnitToLocationDistance( nUnit, vLoc ) > 250
 	then
 		return false
 	end
@@ -557,16 +592,34 @@ end
 
 function U.GetCreepType( creep )
 
+    if (creep:IsHero() == true) then return "hero" end
+
 	local creepMaxHealth = creep:GetMaxHealth()
 
-	if (creepMaxHealth <= 900) then
-		return "meele"
-	elseif (creepMaxHealth <= 500) then
+	if (creepMaxHealth <= 500) then
 		return "ranged"
-	else
+	elseif (creepMaxHealth <= 900) then
+		return "meele"
+	elseif (creepMaxHealth <= 1700) then
 		return "siege"
+	else
+		return "tower"
 	end
 end
+
+function U.GetAttacksPerSecondForCreepType( creepType )
+
+	if (creepType == "ranged") then
+		return 1.00
+	elseif (creepType == "meele") then
+		return 1.00
+	elseif (creepType == "siege") then
+		return 3.00
+	else
+		return 0.82
+	end
+end
+
 
 function U.IsLastHitDesireGreatest( lastHitDesire, battleDesire, abilityUseDesire, moveDesire )
 
@@ -602,6 +655,146 @@ function U.IsMoveDesireGreatest( lastHitDesire, battleDesire, abilityUseDesire, 
 	else
 		return false
 	end
+end
+
+function U.DoesBotHaveToTurnToHitCreep(bot, creepTarget)
+	local botAngle = bot:GetFacing()
+	local botLocation = bot:GetLocation()
+	local creepLocation = creepTarget:GetLocation()
+	local targetX, targetY = botLocation.x - creepLocation.x   , botLocation.y - creepLocation.y
+	local creepAngle = math.atan2(targetX, targetY) * DEGREE_VALUE_ONE_RADIAN
+
+	local creepAngleRelative = creepAngle + 180
+
+	local angleDifference = botAngle - creepAngleRelative
+
+	local timeToTurn = math.abs((SF_TIME_TO_TURN_180_DEGREES * angleDifference) / 180)
+
+	--print("BOT ANGLE", bot:GetFacing())
+	--print("CREEP ANGLE", math.atan2(targetX, targetY) * DEGREE_VALUE_ONE_RADIAN)
+	--print("ANGLE DIFFERENCE", angleDifference)
+	--print("Time to turn", timeToTurn)
+			
+	if (((botAngle - creepAngleRelative) >= 11.5) or ((botAngle - creepAngleRelative) <= -11.5)) then
+		return true, timeToTurn
+	else
+		return false, 0
+	end
+end
+
+function U.getDamageMultipler(target)
+	local targetArmor = target:GetArmor()
+	local numerator = 0.052 * targetArmor
+	local denominator = 0.9 + 0.048 * math.abs(targetArmor)
+	return 1 - (numerator/denominator)
+end
+
+function U.getAttackPointBasedOnIAS(bot)
+	local agilityIAS = bot:GetAttributeValue(ATTRIBUTE_AGILITY)
+
+	local botSecondsPerAttack = bot:GetSecondsPerAttack()
+	local botAttackPerSecond = 1 / botSecondsPerAttack
+
+	local bonusIAS = (botAttackPerSecond * 160) - 100 - agilityIAS
+
+	local IASTotal = agilityIAS + bonusIAS
+	local attackPoint = bot:GetAttackPoint() / ( 1 + (IASTotal / 100))
+	return attackPoint
+end
+
+function U.GetBotSpellDamage(bot, enemy, timePeriod, abilities)
+	if abilities == nil then return 0 end
+	local spellDamage = 0
+	local timeTaken = timePeriod
+	local botMana = bot:GetMana()
+	local distanceBetweenBotAndEnemy = GetUnitToUnitDistance(bot, enemy)
+	local qRazeManaCost = abilities[1]:GetManaCost()
+	local wRazeManaCost = abilities[2]:GetManaCost()
+	local eRazeManaCost = abilities[3]:GetManaCost()
+	local ultiManaCost = abilities[4]:GetManaCost()
+	
+	if abilities[3]:IsCooldownReady() == true and (botMana >= eRazeManaCost)  and distanceBetweenBotAndEnemy > 450 and distanceBetweenBotAndEnemy < 950 and bot:IsFacingLocation(enemy:GetLocation(), 10) and abilities[3]:GetCastPoint() <= timeTaken   then
+		spellDamage = spellDamage + (abilities[3]:GetAbilityDamage() - (abilities[3]:GetAbilityDamage() * enemy:GetMagicResist()))
+		botMana = botMana - abilities[3]:GetManaCost()
+		timeTaken = timeTaken - abilities[3]:GetCastPoint()
+	end
+	
+	if abilities[2]:IsCooldownReady() == true and (botMana >= wRazeManaCost) and distanceBetweenBotAndEnemy > 200  and distanceBetweenBotAndEnemy < 700 and bot:IsFacingLocation(enemy:GetLocation(), 10) and abilities[2]:GetCastPoint() <= timeTaken   then
+		spellDamage = spellDamage + (abilities[2]:GetAbilityDamage() - (abilities[2]:GetAbilityDamage() * enemy:GetMagicResist()))
+		botMana = botMana - abilities[2]:GetManaCost()
+		timeTaken = timeTaken - abilities[2]:GetCastPoint()
+	end
+	
+	if abilities[1]:IsCooldownReady() == true and (botMana >= qRazeManaCost) and distanceBetweenBotAndEnemy > 0 and distanceBetweenBotAndEnemy < 450 and bot:IsFacingLocation(enemy:GetLocation(), 10) and abilities[1]:GetCastPoint() <= timeTaken   then
+		spellDamage = spellDamage + (abilities[1]:GetAbilityDamage() - (abilities[1]:GetAbilityDamage() * enemy:GetMagicResist()))
+		botMana = botMana - abilities[1]:GetManaCost()
+		timeTaken = timeTaken - abilities[1]:GetCastPoint()
+	end
+
+	if (bot:GetLevel() > 8) and abilities[4]:IsCooldownReady() == true and (botMana >= ultiManaCost) and GetUnitToUnitDistance(bot, enemy) < 100 and abilities[4]:GetCastPoint() <= timeTaken   then
+		spellDamage = spellDamage + (abilities[4]:GetAbilityDamage() - (abilities[4]:GetAbilityDamage() * enemy:GetMagicResist()))
+		botMana = botMana - abilities[4]:GetManaCost()
+		timeTaken = timeTaken - abilities[4]:GetCastPoint()
+	end
+	
+	return spellDamage, (timePeriod - timeTaken)
+end
+
+
+function U.GetEnemySpellDamage(bot, enemy, timePeriod, abilities)
+	if abilities == nil then return 0 end
+
+	local spellDamage = 0
+	local timeTaken = timePeriod
+	local enemyMana = enemy:GetMana()
+	local distanceBetweenBotAndEnemy = GetUnitToUnitDistance(bot, enemy)
+	local qRazeManaCost = abilities[1]:GetManaCost()
+	local wRazeManaCost = abilities[2]:GetManaCost()
+	local eRazeManaCost = abilities[3]:GetManaCost()
+	local ultiManaCost = abilities[4]:GetManaCost()
+	
+	if (enemyMana >= eRazeManaCost) and distanceBetweenBotAndEnemy > 450 and distanceBetweenBotAndEnemy < 950 and enemy:IsFacingLocation(bot:GetLocation(), 10) and abilities[3]:GetCastPoint() <= timeTaken  then
+		spellDamage = spellDamage + (abilities[3]:GetAbilityDamage() - (abilities[3]:GetAbilityDamage() * bot:GetMagicResist()))
+		enemyMana = enemyMana - abilities[3]:GetManaCost()
+		timeTaken = timeTaken - abilities[3]:GetCastPoint()
+	end
+	
+	if (enemyMana >= wRazeManaCost) and distanceBetweenBotAndEnemy > 200  and distanceBetweenBotAndEnemy < 700 and enemy:IsFacingLocation(bot:GetLocation(), 10) and abilities[2]:GetCastPoint() <= timeTaken    then
+		spellDamage = spellDamage + (abilities[2]:GetAbilityDamage() - (abilities[2]:GetAbilityDamage() * bot:GetMagicResist()))
+		enemyMana = enemyMana - abilities[2]:GetManaCost()
+		timeTaken = timeTaken - abilities[2]:GetCastPoint()
+	end
+	
+	
+	if (enemyMana >= qRazeManaCost) and distanceBetweenBotAndEnemy > 0  and distanceBetweenBotAndEnemy < 450 and enemy:IsFacingLocation(bot:GetLocation(), 10) and abilities[1]:GetCastPoint() <= timeTaken   then
+		spellDamage = spellDamage + (abilities[1]:GetAbilityDamage() - (abilities[1]:GetAbilityDamage() * bot:GetMagicResist()))
+		enemyMana = enemyMana - abilities[1]:GetManaCost()
+		timeTaken = timeTaken - abilities[1]:GetCastPoint()
+	end
+	
+	if (bot:GetLevel() > 5) and (enemyMana >= ultiManaCost) and GetUnitToUnitDistance(bot, enemy) < 1000 and abilities[4]:GetCastPoint() <= timeTaken   then
+		spellDamage = spellDamage + (abilities[4]:GetAbilityDamage() - (abilities[4]:GetAbilityDamage() * bot:GetMagicResist()))
+		enemyMana = enemyMana - abilities[4]:GetManaCost()
+		timeTaken = timeTaken - abilities[4]:GetCastPoint()
+	end
+	
+	return spellDamage, (timePeriod - timeTaken)
+end
+
+function U.GetUnitsDamageToEnemyForTimePeriod(unit, enemy, timePeriod, abilities)
+	local tPeriod = timePeriod
+	local unitSecondsPerAttack = unit:GetSecondsPerAttack()
+	local unitAttackPerSecond = 1 / unitSecondsPerAttack
+	local spellDamage
+	local timeTakenToCastSpells
+	if unit:IsBot() == true then
+		spellDamage, timeTakenToCastSpells = U.GetBotSpellDamage(unit, enemy, timePeriod, abilities)
+	else
+		spellDamage, timeTakenToCastSpells = U.GetEnemySpellDamage(unit, enemy, timePeriod, abilities)
+	end
+	
+	tPeriod = tPeriod - timeTakenToCastSpells
+	return ((unit:GetAttackDamage() * unit:GetAttackCombatProficiency(enemy) * U.getDamageMultipler(enemy))* (tPeriod / unitSecondsPerAttack)) + spellDamage 
 end
 
 return U;
