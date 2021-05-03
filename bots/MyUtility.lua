@@ -484,6 +484,16 @@ function U.IsTeleporting(bot)
   return bot:HasModifier("modifier_teleporting")
 end
 
+function U.IsItemUsable(bot, item)
+  -- Only TP scroll can be in slot 15, but 15 is not considered a 'main' slot type, so we check for
+  -- that specially.
+  return item ~= nil and (bot:GetItemSlotType(item.slot) == ITEM_SLOT_TYPE_MAIN or item.slot == 15)
+end
+
+function U.IsItemInBackpack(bot, item)
+  return item ~= nil and  bot:GetItemSlotType(item.slot) == ITEM_SLOT_TYPE_BACKPACK
+end
+
 function U.enum(entries)
   local objects = {}
   for id, name in pairs(entries) do
