@@ -1159,13 +1159,10 @@ local function ItemUsageThink(botManaLevel, botManaPercentage, botHealthLevel, b
   -- The assumption here is that this method will be called only after game starts
   -- (i.e., creeps started)
   local tpScroll = mutils.GetItemTPScroll(bot)
-  if bot:DistanceFromFountain() <= 5 and tpScroll ~= nil then
-    -- Special 'valid' item check for item_tpscroll
-    if tpScroll.slot == 15 then
-      print("using tp_scroll from "..tostring(bot:DistanceFromFountain()).." on location: "..tostring(mutils.GetT1Location()))
-      bot:Action_UseAbilityOnLocation(tpScroll.item, mutils.GetT1Location())
-      return botState.STATE_TELEPORTING
-    end
+  if bot:DistanceFromFountain() <= 5 and mutils.IsItemUsable(bot, tpScroll) then
+    print("using tp_scroll from "..tostring(bot:DistanceFromFountain()).." on location: "..tostring(mutils.GetT1Location()))
+    bot:Action_UseAbilityOnLocation(tpScroll.item, mutils.GetT1Location())
+    return botState.STATE_TELEPORTING
   end
 
   return botState.STATE_IDLE
