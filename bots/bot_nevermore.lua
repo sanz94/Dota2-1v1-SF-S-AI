@@ -1121,23 +1121,6 @@ local function AbilityUsageThink(botLevel, botAttackDamage, enemyHero, enemyCree
 end
 
 ----------------------------------------------------------------------------------------------------
--- Function called every frame to determine what items to buy
-----------------------------------------------------------------------------------------------------
-local function ItemPurchaseThink(botManaPercentage, botHealthPercentage)
-  if bot:DistanceFromFountain() <= 5 and mutils.GetItemTPScroll(bot) == nil then
-    table.insert(itemToBuy, 1, "item_tpscroll")
-  end
-
-	if itemsToBuy[1] ~= "item_flask" and (botHealthPercentage <= 0.6) then
-		table.insert(itemsToBuy, 1, "item_flask")
-	end
-
-	if itemsToBuy[1] ~= "item_enchanted_mango" and (botManaPercentage <= 0.6) then
-		table.insert(itemsToBuy, 1, "item_enchanted_mango")
-	end
-end
-
-----------------------------------------------------------------------------------------------------
 -- Function called every frame to determine if and what item(s) to use
 ----------------------------------------------------------------------------------------------------
 local function ItemUsageThink(botManaLevel, botManaPercentage, botHealthLevel, botHealthPercentage)
