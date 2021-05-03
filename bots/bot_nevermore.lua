@@ -80,6 +80,7 @@ local botState = mutils.enum({
     "STATE_TELEPORTING",
     "STATE_MOVING"
 })
+local state = botState.STATE_IDLE
 ----------------------------------------------------------------------------------------------------
 
 -- All chat at game start
@@ -1121,59 +1122,46 @@ local function AbilityUsageThink(botLevel, botAttackDamage, enemyHero, enemyCree
 end
 
 ----------------------------------------------------------------------------------------------------
--- Function called every frame to determine what items to buy
-----------------------------------------------------------------------------------------------------
-local function ItemPurchaseThink(botManaPercentage, botHealthPercentage)
-  if bot:DistanceFromFountain() <= 5 and mutils.GetItemTPScroll(bot) == nil then
-    table.insert(itemToBuy, 1, "item_tpscroll")
-  end
-
-	if itemsToBuy[1] ~= "item_flask" and (botHealthPercentage <= 0.6) then
-		table.insert(itemsToBuy, 1, "item_flask")
-	end
-
-	if itemsToBuy[1] ~= "item_enchanted_mango" and (botManaPercentage <= 0.6) then
-		table.insert(itemsToBuy, 1, "item_enchanted_mango")
-	end
-end
-
-----------------------------------------------------------------------------------------------------
 -- Function called every frame to determine if and what item(s) to use
 ----------------------------------------------------------------------------------------------------
 local function ItemUsageThink(botManaLevel, botManaPercentage, botHealthLevel, botHealthPercentage)
   -- Using Faerie Fire when needed is top priority
   if botHealthLevel <= 85 then
     faerieFire = mutils.GetItemFaerieFire(bot)
-    if faerieFire ~= nil then
-      bot:Action_UseAbility(faerieFire)
+    if mutils.IsItemUsable(bot, faerieFire) then
+      bot:Action_UseAbility(faerieFire.item)
       return botState.STATE_HEALING
+    elseif mutils.IsItemInBackpack(bot, faerieFire) then
+      bot:ActionImmediate_SwapItems(1, faerieFire.slot)
     end
   end
 
-  local item_to_use = nil
+  local itemToUse = nil
 
   -- Using Salve or Mango when needed
   local state = nil
   if botHealthPercentage <= 0.6 then
-    item_to_use = mutils.GetItemFlask(bot)
+    itemToUse = mutils.GetItemFlask(bot)
     state = botState.STATE_HEALING
   elseif botManaPercentage <= 0.6 then
-    item_to_use = mutils.GetItemMango(bot)
+    itemToUse = mutils.GetItemMango(bot)
     state = botState.STATE_IDLE
   end
 
-  if item_to_use ~= nil then
-    bot:Action_UseAbilityOnEntity(item_to_use, bot)
+  if mutils.IsItemUsable(bot, itemToUse) then
+    bot:Action_UseAbilityOnEntity(itemToUse.item, bot)
     return state
+  elseif mutils.IsItemInBackpack(bot, itemTosUe) then
+    bot:ActionImmediate_SwapItems(1, itemToUse.slot)
   end
 
   -- TP to T1 if we are in base
   -- The assumption here is that this method will be called only after game starts
   -- (i.e., creeps started)
   local tpScroll = mutils.GetItemTPScroll(bot)
-  if bot:DistanceFromFountain() <= 5 and tpScroll ~= nil then
+  if bot:DistanceFromFountain() <= 5 and mutils.IsItemUsable(bot, tpScroll) then
     print("using tp_scroll from "..tostring(bot:DistanceFromFountain()).." on location: "..tostring(mutils.GetT1Location()))
-    bot:Action_UseAbilityOnLocation(tpScroll, mutils.GetT1Location())
+    bot:Action_UseAbilityOnLocation(tpScroll.item, mutils.GetT1Location())
     return botState.STATE_TELEPORTING
   end
 
@@ -1197,9 +1185,9 @@ function Think()
 	enemyHero = bot:GetNearbyHeroes( 1600, true, BOT_MODE_NONE)
 	botLevel = bot:GetLevel()
 	botManaLevel = bot:GetMana()
-	botManaPercentage = botManaLevel/bot:GetMaxMana() 
-	botHealthLevel = bot:GetHealth()    
-    botHealthPercentage = botHealthLevel/bot:GetMaxHealth() 
+	botManaPercentage = botManaLevel/bot:GetMaxMana()
+	botHealthLevel = bot:GetHealth()
+  botHealthPercentage = botHealthLevel/bot:GetMaxHealth()
 	nearbyCreeps =  bot:GetNearbyLaneCreeps( 1600, false )
 	enemyCreeps = bot:GetNearbyLaneCreeps( 1600, true )
 	-----------------------------------------------------------
@@ -1208,14 +1196,18 @@ function Think()
 	-----------------------------------------------------------
 	if DotaTime() < 0 then
 
-			itemWard = mutils.GetItemWard(bot);
-			if itemWard == nil then
-				wardPlaced = true
-			else
-				wardPlaced = false
-			end
-		if wardPlaced == false then
-			bot:Action_UseAbilityOnLocation(itemWard, Vector(-286.881836, 100.408691, 1115.548218));
+     itemWard = mutils.GetItemWard(bot);
+    if itemWard.item == nil then
+       wardPlaced = true
+    else
+       wardPlaced = false
+    end
+    if wardPlaced == false then
+      if mutils.IsItemUsable(bot, itemWard) then
+         bot:Action_UseAbilityOnLocation(itemWard.item, Vector(-286.881836, 100.408691, 1115.548218))
+      elseif mutils.IsItemInBackpack(bot, itemWard) then
+         bot:ActionImmediate_SwapItems(1, itemWard.slot)
+      end
 		else
 			mutils.moveToT3Tower(bot)
 			return
@@ -1232,16 +1224,19 @@ function Think()
 	-----------------------------------------------------------
 
 	-- Brain of the bot
-	-----------------------------------------------------------		
-    ItemPurchaseThink(botManaPercentage, botHealthPercentage)
-    state = ItemUsageThink(botManaLevel, botManaPercentage, botHealthLevel, botHealthPercentage)
+	-----------------------------------------------------------
+	if dotaTime > 30 or creepBlocking == false then
+    newState = ItemUsageThink(botManaLevel, botManaPercentage, botHealthLevel, botHealthPercentage)
     if mutils.IsHealing(bot) then
-      state = botState.STATE_HEALING
+      newState = botState.STATE_HEALING
     elseif mutils.IsTeleporting(bot) then
-      state = botState.STATE_TELEPORTING
+      newState = botState.STATE_TELEPORTING
     end
 
-    print("Current State: "..tostring(state.name))
+    if state ~= newState then
+       state = newState
+       print("State changed to: "..tostring(state.name))
+    end
 
     CourierUsageThink()
 		AbilityLevelUpThink()

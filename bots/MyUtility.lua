@@ -439,12 +439,17 @@ function U.GetWeakestUnit(units)
 end
 
 local function GetItem(bot, item_name)
-   local itemSlot = bot:FindItemSlot(item_name)
-   if itemSlot == -1 then
-      return nil
-   else
-      return bot:GetItemInSlot(itemSlot)
-   end
+  local itemSlot = bot:FindItemSlot(item_name)
+  local item = nil
+
+  if itemSlot ~= -1 then
+    item = bot:GetItemInSlot(itemSlot)
+  end
+
+  return {
+    slot = itemSlot,
+    item = item
+  }
 end
 
 function U.GetItemWard(bot)
@@ -477,6 +482,16 @@ end
 
 function U.IsTeleporting(bot)
   return bot:HasModifier("modifier_teleporting")
+end
+
+function U.IsItemUsable(bot, item)
+  -- Only TP scroll can be in slot 15, but 15 is not considered a 'main' slot type, so we check for
+  -- that specially.
+  return item ~= nil and (bot:GetItemSlotType(item.slot) == ITEM_SLOT_TYPE_MAIN or item.slot == 15)
+end
+
+function U.IsItemInBackpack(bot, item)
+  return item ~= nil and  bot:GetItemSlotType(item.slot) == ITEM_SLOT_TYPE_BACKPACK
 end
 
 function U.enum(entries)
