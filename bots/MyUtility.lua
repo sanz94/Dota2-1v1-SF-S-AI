@@ -439,12 +439,17 @@ function U.GetWeakestUnit(units)
 end
 
 local function GetItem(bot, item_name)
-   local itemSlot = bot:FindItemSlot(item_name)
-   if itemSlot == -1 then
-      return nil
-   else
-      return bot:GetItemInSlot(itemSlot)
-   end
+  local itemSlot = bot:FindItemSlot(item_name)
+  local item = nil
+
+  if itemSlot ~= -1 then
+    item = bot:GetItemInSlot(itemSlot)
+  end
+
+  return {
+    slot = itemSlot,
+    item = item
+  }
 end
 
 function U.GetItemWard(bot)
